@@ -8,13 +8,17 @@ from datetime import datetime
 
 # --- CONFIGURACIÓN ---
 LISTA_USUARIOS = ["m0ritaav", "fresaskoncremq", "yazminsitq", "exorcismxq", "jerezanotravis"]
-WEBHOOK_URL = "https://discord.com/api/webhooks/1446757512081707071/SKZzU2b3RHs-yz3g6iTOonfIz9SR-ZTd04sjCPeJ4uQ5oTG5SqGMtXv-7s09XoCxwyap" # <--- ¡PON TU WEBHOOK!
+WEBHOOK_URL = "TU_WEBHOOK_AQUI" # <--- ¡PON TU WEBHOOK!
 
-# Usamos Imginn
-BASE_URL = "https://imginn.com/{}/"
+# CAMBIO: Usamos Pixwox, suele ser más fiable para ver el estado "Private"
+BASE_URL = "https://www.pixwox.com/profile/{}/"
+
+# Headers más completos para parecer un navegador Chrome real
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36",
-    "Accept-Language": "en-US,en;q=0.9"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.google.com/"
 }
 
 DB_FILE = "estado_privacidad.json"
@@ -40,9 +44,10 @@ def enviar_discord(mensaje):
     except: pass
 
 def chequear_estado(usuario):
-    print(f"🕵️ Revisando: {usuario}...")
+    print(f"🕵️ Revisando (Pixwox): {usuario}...")
     try:
-        r = requests.get(BASE_URL.format(usuario), headers=HEADERS, timeout=15)
+        url = BASE_URL.format(usuario)
+        r = requests.get(url, headers=HEADERS, timeout=20)
         
         if r.status_code == 404:
             return "no_existe"
@@ -50,62 +55,66 @@ def chequear_estado(usuario):
         soup = BeautifulSoup(r.text, 'html.parser')
         texto = soup.get_text().lower()
 
-        # Lógica de detección
-        if "this account is private" in texto:
+        # --- LÓGICA DE DETECCIÓN PIXWOX ---
+        
+        # Pixwox suele poner "This Account is Private" claramente
+        if "account is private" in texto or "private account" in texto:
             return "privada"
-        elif "downloads" in texto or "posts" in texto:
+        
+        # Si vemos contadores de posts/seguidores y NO dice privada, es pública
+        # Buscamos clases específicas o palabras clave de un perfil abierto
+        if "posts" in texto and "followers" in texto:
             return "publica"
-        else:
-            # A veces imginn falla en cargar, retornamos error para no dar falsos positivos
-            return "error_lectura"
+            
+        # Si llegamos aquí, algo raro pasó (quizás Cloudflare o página vacía)
+        # Imprimimos un trozo del texto para depurar si lo corres en local
+        # print(f"DEBUG: {texto[:200]}") 
+        return "error_lectura"
             
     except Exception as e:
+        print(f"Error de conexión: {e}")
         return f"error_red"
 
 # --- EJECUCIÓN ---
-print("--- Iniciando Rastreo (Reporte Total) ---")
+print("--- Iniciando Rastreo ---")
 base_datos = cargar_bd()
 hora = datetime.now().strftime("%H:%M")
 
 for usuario in LISTA_USUARIOS:
-    # Pausa entre 4 y 8 segundos
-    time.sleep(random.randint(4, 8))
+    # Pausa aleatoria un poco más larga para Pixwox
+    time.sleep(random.randint(5, 10))
     
     estado_actual = chequear_estado(usuario)
     msg = ""
 
     # 1. Manejo de Errores
     if "error" in estado_actual or "no_existe" in estado_actual:
-        msg = f"⚠️ **{usuario}**: No se pudo verificar ({estado_actual})."
+        # Si falla, avisamos a Discord para que sepas que el bot está vivo pero bloqueado
+        msg = f"⚠️ **{usuario}**: Error al leer ({estado_actual}). Posible bloqueo."
         enviar_discord(msg)
         continue
 
     # 2. Verificar Cambios
     if usuario not in base_datos:
-        # Nuevo usuario
         base_datos[usuario] = estado_actual
         icono = "🔒" if estado_actual == "privada" else "🔓"
-        msg = f"🆕 **{usuario}** agregado a la vigilancia.\nEstado actual: {icono} {estado_actual.upper()}"
+        msg = f"🆕 **{usuario}** agregado.\nEstado: {icono} {estado_actual.upper()}"
     
     else:
         estado_anterior = base_datos[usuario]
         
         if estado_actual != estado_anterior:
-            # ¡HUBO CAMBIO!
             if estado_actual == "publica":
-                msg = f"🚨🔓 **¡ALERTA! {usuario} AHORA ES PÚBLICA!**\nAntes: {estado_anterior} ➡ Ahora: PÚBLICA\n[Ver Perfil](https://instagram.com/{usuario})"
+                msg = f"🚨🔓 **¡{usuario} AHORA ES PÚBLICA!**\nAntes: {estado_anterior} ➡ Ahora: PÚBLICA\n[Ver Perfil](https://instagram.com/{usuario})"
             else:
                 msg = f"🚨🔒 **{usuario} puso el candado.**\nAntes: {estado_anterior} ➡ Ahora: PRIVADA"
-            
-            # Guardamos el cambio
             base_datos[usuario] = estado_actual
             
         else:
-            # SIN CAMBIOS (Lo que pediste)
+            # SIN CAMBIOS
             icono = "🔒" if estado_actual == "privada" else "🔓"
-            msg = f"✅ **{usuario}**: Sin novedades ({hora}).\nSigue estando: {icono} **{estado_actual.upper()}**"
+            msg = f"✅ **{usuario}** ({hora}): Sigue {icono} **{estado_actual.upper()}**"
 
-    # Enviamos el mensaje a Discord
     enviar_discord(msg)
 
 guardar_bd(base_datos)
