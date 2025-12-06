@@ -1,0 +1,112 @@
+import requests
+from bs4 import BeautifulSoup
+import json
+import os
+import time
+import random
+from datetime import datetime
+
+# --- CONFIGURACIÓN ---
+LISTA_USUARIOS = ["m0ritaav", "fresaskoncremq", "yazminsitq", "exorcismxq", "jerezanotravis"]
+WEBHOOK_URL = "https://discord.com/api/webhooks/1446757512081707071/SKZzU2b3RHs-yz3g6iTOonfIz9SR-ZTd04sjCPeJ4uQ5oTG5SqGMtXv-7s09XoCxwyap" # <--- ¡PON TU WEBHOOK!
+
+# Usamos Imginn
+BASE_URL = "https://imginn.com/{}/"
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.9"
+}
+
+DB_FILE = "estado_privacidad.json"
+
+def cargar_bd():
+    if not os.path.exists(DB_FILE):
+        return {}
+    with open(DB_FILE, "r") as f:
+        return json.load(f)
+
+def guardar_bd(db):
+    with open(DB_FILE, "w") as f:
+        json.dump(db, f)
+
+def enviar_discord(mensaje):
+    if "TU_WEBHOOK" in WEBHOOK_URL: return
+    
+    data = {
+        "username": "Monitor de Candados",
+        "content": mensaje
+    }
+    try: requests.post(WEBHOOK_URL, json=data)
+    except: pass
+
+def chequear_estado(usuario):
+    print(f"🕵️ Revisando: {usuario}...")
+    try:
+        r = requests.get(BASE_URL.format(usuario), headers=HEADERS, timeout=15)
+        
+        if r.status_code == 404:
+            return "no_existe"
+        
+        soup = BeautifulSoup(r.text, 'html.parser')
+        texto = soup.get_text().lower()
+
+        # Lógica de detección
+        if "this account is private" in texto:
+            return "privada"
+        elif "downloads" in texto or "posts" in texto:
+            return "publica"
+        else:
+            # A veces imginn falla en cargar, retornamos error para no dar falsos positivos
+            return "error_lectura"
+            
+    except Exception as e:
+        return f"error_red"
+
+# --- EJECUCIÓN ---
+print("--- Iniciando Rastreo (Reporte Total) ---")
+base_datos = cargar_bd()
+hora = datetime.now().strftime("%H:%M")
+
+for usuario in LISTA_USUARIOS:
+    # Pausa entre 4 y 8 segundos
+    time.sleep(random.randint(4, 8))
+    
+    estado_actual = chequear_estado(usuario)
+    msg = ""
+
+    # 1. Manejo de Errores
+    if "error" in estado_actual or "no_existe" in estado_actual:
+        msg = f"⚠️ **{usuario}**: No se pudo verificar ({estado_actual})."
+        enviar_discord(msg)
+        continue
+
+    # 2. Verificar Cambios
+    if usuario not in base_datos:
+        # Nuevo usuario
+        base_datos[usuario] = estado_actual
+        icono = "🔒" if estado_actual == "privada" else "🔓"
+        msg = f"🆕 **{usuario}** agregado a la vigilancia.\nEstado actual: {icono} {estado_actual.upper()}"
+    
+    else:
+        estado_anterior = base_datos[usuario]
+        
+        if estado_actual != estado_anterior:
+            # ¡HUBO CAMBIO!
+            if estado_actual == "publica":
+                msg = f"🚨🔓 **¡ALERTA! {usuario} AHORA ES PÚBLICA!**\nAntes: {estado_anterior} ➡ Ahora: PÚBLICA\n[Ver Perfil](https://instagram.com/{usuario})"
+            else:
+                msg = f"🚨🔒 **{usuario} puso el candado.**\nAntes: {estado_anterior} ➡ Ahora: PRIVADA"
+            
+            # Guardamos el cambio
+            base_datos[usuario] = estado_actual
+            
+        else:
+            # SIN CAMBIOS (Lo que pediste)
+            icono = "🔒" if estado_actual == "privada" else "🔓"
+            msg = f"✅ **{usuario}**: Sin novedades ({hora}).\nSigue estando: {icono} **{estado_actual.upper()}**"
+
+    # Enviamos el mensaje a Discord
+    enviar_discord(msg)
+
+guardar_bd(base_datos)
+print("--- Fin ---")
