@@ -8,7 +8,7 @@ from datetime import datetime
 
 # --- CONFIGURACIÓN ---
 LISTA_USUARIOS = ["m0ritaav", "fresaskoncremq", "yazminsitq", "exorcismxq", "jerezanotravis"]
-WEBHOOK_URL = "TU_WEBHOOK_AQUI" # <--- ¡PON TU WEBHOOK!
+WEBHOOK_URL = "https://discord.com/api/webhooks/1446757512081707071/SKZzU2b3RHs-yz3g6iTOonfIz9SR-ZTd04sjCPeJ4uQ5oTG5SqGMtXv-7s09XoCxwyap" # <--- ¡PON TU WEBHOOK!
 
 # CAMBIO: Usamos Pixwox, suele ser más fiable para ver el estado "Private"
 BASE_URL = "https://www.pixwox.com/profile/{}/"
@@ -119,3 +119,4 @@ for usuario in LISTA_USUARIOS:
 
 guardar_bd(base_datos)
 print("--- Fin ---")
+
