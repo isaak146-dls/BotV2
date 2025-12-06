@@ -2,11 +2,7 @@ name: Monitor de Privacidad (Candado)
 
 on:
   schedule:
-    # Se ejecuta cada 6 horas automáticamente
-    # Puedes cambiarlo: '0 */1 * * *' sería cada hora (Cuidado con el spam)
-    - cron: "0 */6 * * *"
-  
-  # Permite ejecutarlo manualmente desde la pestaña "Actions" para probar
+    - cron: "*/30 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -25,27 +21,16 @@ jobs:
         with:
           python-version: '3.9'
 
-      - name: Instalar librerías necesarias
-        # Instalamos directamente requests y beautifulsoup4
+      - name: Instalar librerías
         run: pip install requests beautifulsoup4
 
       - name: Ejecutar el Bot Espía
-        # Asegúrate de que tu archivo python se llame así en el repositorio
         run: python bot_candado_siempre.py
 
-      - name: Guardar base de datos (Persistencia)
+      - name: Guardar base de datos
         run: |
-          # Configuración del bot para hacer el commit
           git config --global user.name "Bot de Vigilancia"
           git config --global user.email "bot@github.com"
-          
-          # Agregamos el archivo JSON donde se guardan los estados (privado/publico)
-          # Si es la primera vez, el script lo creará y aquí lo guardaremos.
           git add estado_privacidad.json
-          
-          # Intentamos guardar. Si no hubo cambios de estado (nadie cambio de privado a publico),
-          # el comando commit fallaría, así que usamos "|| exit 0" para que no marque error.
           git commit -m "Actualizar estado de privacidad" || exit 0
-          
-          # Subimos los cambios al repositorio
           git push
