@@ -2,7 +2,7 @@ name: Monitor de Privacidad (Candado)
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "*/30 * * * *" # Cada 30 min
   workflow_dispatch:
 
 permissions:
@@ -25,6 +25,11 @@ jobs:
         run: pip install requests beautifulsoup4
 
       - name: Ejecutar el Bot Espía
+        # --- AQUÍ CONECTAMOS LOS SECRETOS ---
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          LISTA_OBJETIVOS: ${{ secrets.LISTA_OBJETIVOS }}
+        # ------------------------------------
         run: python bot_candado_siempre.py
 
       - name: Guardar base de datos
