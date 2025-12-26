@@ -4,17 +4,16 @@ import json
 import os
 import time
 import random
+import hashlib # <--- Necesario para encriptar
 from datetime import datetime, timedelta
 
 # --- CONFIGURACIÓN SEGURA ---
-
 WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK')
-
 usuarios_env = os.getenv('LISTA_OBJETIVOS')
+
 if usuarios_env:
     LISTA_USUARIOS = [u.strip() for u in usuarios_env.split(',') if u.strip()]
 else:
-    print("⚠️ Error: No se encontró la lista de usuarios en los secretos.")
     LISTA_USUARIOS = []
 
 # Configuración Pixwox
@@ -27,6 +26,10 @@ HEADERS = {
 }
 
 DB_FILE = "estado_privacidad.json"
+
+def generar_hash(texto):
+    """Convierte 'usuario' en '5d4140...' para ocultarlo en el JSON"""
+    return hashlib.md5(texto.encode()).hexdigest()
 
 def cargar_bd():
     if not os.path.exists(DB_FILE):
@@ -54,23 +57,17 @@ def chequear_estado(usuario):
     try:
         url = BASE_URL.format(usuario)
         r = requests.get(url, headers=HEADERS, timeout=20)
-        
-        if r.status_code == 404:
-            return "no_existe"
-        
+        if r.status_code == 404: return "no_existe"
         soup = BeautifulSoup(r.text, 'html.parser')
         texto = soup.get_text().lower()
 
-        if "account is private" in texto or "private account" in texto:
-            return "privada"
-        if "posts" in texto and "followers" in texto:
-            return "publica"
+        if "account is private" in texto or "private account" in texto: return "privada"
+        if "posts" in texto and "followers" in texto: return "publica"
         return "error_lectura"
-    except Exception as e:
-        return "error_red"
+    except: return "error_red"
 
 # --- EJECUCIÓN ---
-print("--- Iniciando Rastreo Seguro ---")
+print("--- Iniciando Rastreo Encriptado ---")
 base_datos = cargar_bd()
 hora_mx = obtener_hora_mexico()
 
@@ -78,38 +75,36 @@ reporte_novedades = []
 reporte_errores = []
 
 for usuario in LISTA_USUARIOS:
-    print(f"::add-mask::{usuario}")
-    # ---------------------------
-
-    time.sleep(random.randint(5, 10))
+    # 1. Encriptar nombre para buscar en la DB
+    usuario_hash = generar_hash(usuario)
     
-    print(f"Revisando: {usuario}")
+    # 2. Ocultar en logs
+    print(f"::add-mask::{usuario}")
+    time.sleep(random.randint(5, 10))
     
     estado_actual = chequear_estado(usuario)
 
-    # 1. Manejo de Errores
     if "error" in estado_actual or "no_existe" in estado_actual:
         reporte_errores.append(f"⚠️ **{usuario}**: {estado_actual}")
         continue
 
-    # 2. Verificar Cambios
-    if usuario not in base_datos:
-        base_datos[usuario] = estado_actual
+    # 3. Usar el HASH para guardar/leer en la base de datos
+    if usuario_hash not in base_datos:
+        base_datos[usuario_hash] = estado_actual
         icono = "🔒" if estado_actual == "privada" else "🔓"
         reporte_novedades.append(f"🆕 **{usuario}**: Agregado. Estado: {icono} {estado_actual.upper()}")
     
     else:
-        estado_anterior = base_datos[usuario]
+        estado_anterior = base_datos[usuario_hash]
         if estado_actual != estado_anterior:
             if estado_actual == "publica":
                 reporte_novedades.append(f"🚨🔓 **¡{usuario} AHORA ES PÚBLICA!**\nAntes: {estado_anterior} ➡ Ahora: PÚBLICA\n🔗 [Ver Perfil](https://instagram.com/{usuario})")
             else:
                 reporte_novedades.append(f"🔒 **{usuario} puso el candado.** (Ahora es PRIVADA)")
-            base_datos[usuario] = estado_actual
+            base_datos[usuario_hash] = estado_actual
 
 guardar_bd(base_datos)
 
-# --- REPORTE ---
 mensaje_final = ""
 if reporte_novedades:
     mensaje_final += "**📢 NOVEDADES DE PRIVACIDAD:**\n" + "\n".join(reporte_novedades) + "\n\n"
@@ -122,4 +117,3 @@ else:
     enviar_discord(f"✅ **Chequeo Completo ({hora_mx}):** Sin cambios en las {len(LISTA_USUARIOS)} cuentas.")
 
 print("--- Fin ---")
-
